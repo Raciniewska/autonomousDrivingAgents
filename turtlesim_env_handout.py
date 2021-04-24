@@ -6,6 +6,7 @@ from turtlesim.msg import Pose
 from turtlesim.srv  import SetPenRequest
 from TurtlesimSIU import TurtlesimSIU
 from geometry_msgs.msg import Twist
+from collections import defaultdict
 import signal
 import sys
 import numpy as np
@@ -13,9 +14,9 @@ import csv
 import random
 
 GRID_RES = 5            # liczba komórek siatki
-CAM_RES = ????          # dł. boku siatki [px]
+CAM_RES = 6         # dł. boku siatki [px] ?????
 SEC_PER_STEP = 1.0      # okres dyskretyzacji sterowania - nie mniej niż 1 [s]
-WAIT_AFTER_MOVE = .01   # oczekiwanie po setPose() [s]
+WAIT_AFTER_MOVE = .10   # oczekiwanie po setPose() [s]
 
 class TurtlesimEnv:
     def __init__(self, cam_res, grid_res, sec_per_step):
@@ -28,33 +29,43 @@ class TurtlesimEnv:
         signal.signal(signal.SIGINT, self.signal_handler)
         rospy.init_node('siu_example', anonymous=False)
     def load_routes(self,fname):            # z pliku do słownika tras agentów {agent:[(cnt,xmin,xmax,ymin,ymax,xgoal,ygoal)]}
-        self.routes={}
-        ????                                # wczytanie tras do słownika
+        self.routes=defaultdict(list)
+	with open(fname) as f:
+		csv_reader=csv.reader(f, delimiter=';')
+		for line in csv_reader:
+			self.routes[line[0]].append(line[1:])
+	print(self.routes)
         tname=list(self.routes.keys())[0]   # utworzenie żółwia dla pierwszej trasy
+	print(tname)
         self.tname=tname
         if self.turtle_api.hasTurtle(tname):
             self.turtle_api.killTurtle(tname)
         self.turtle_api.spawnTurtle(tname,Pose())
         self.turtle_api.setPen(tname,turtlesim.srv.SetPenRequest(r=255,g=255,b=255,width=5,off=1))
         self.color_api = TurtlesimSIU.ColorSensor(tname)
+
     def reset(self,max_steps,section=None): # przygotowanie do nowego przejazdu, zwraca sytuację początkową
         self.max_steps = max_steps
         self.step_cnt = 0
         # uczymy na trasie aktualnego agenta
         if section is None:
-            section=random.choice(self.routes[self.tname])  # wybór losowego segmentu trasy
-        self.goal_loc = Pose(x=section[5], y=section[6])
+                section=random.choice(self.routes[self.tname])  # wybór losowego segmentu trasy
+        self.goal_loc = Pose(x=float(section[5]), y=float(section[6]))
         # próba ulokowania startu we wskazanym obszarze i jednocześnie na drodze (niezerowy wektor zalecanej prędkości)
         while True:
-            x=np.random.uniform(section[1],section[2])
-            y=np.random.uniform(section[3],section[4])
+            x=np.random.uniform(float(section[1]),float(section[2]))
+            y=np.random.uniform(float(section[3]),float(section[4]))
             # azymut początkowy w kierunku celu
             theta=np.arctan2(self.goal_loc.y-y,self.goal_loc.x-x)
             # przestawienie żółwia w losowe miejsce obszaru narodzin
             self.turtle_api.setPose(self.tname,Pose(x=x,y=y,theta=theta),mode='absolute')
             rospy.sleep(WAIT_AFTER_MOVE)    # odczekać UWAGA inaczej symulator nie zdąży przestawić żółwia
-            ????                            # przestawiać do skutku, aż znajdzie się na drodze
+            #????                            # przestawiać do skutku, aż znajdzie się na drodze
+	    if self.color_api.check().g !=255 or self.color_api.check().r!=201 or self.color_api.check().b!=199:
+	    	return self.get_map(self.tname)
+	    
         return self.get_map(self.tname)
+
     def get_road(self,name):
         color = self.color_api.check()
         fx=.02*(color.r-200)                # składowa x zalecanej prędkości <-1;1>
@@ -65,6 +76,7 @@ class TurtlesimEnv:
         fc=fx*np.cos(pose.theta)+fy*np.sin(pose.theta)  # rzut zalecanej prędkości na azymut
         fp=fy*np.cos(pose.theta)-fx*np.sin(pose.theta)  # rzut zalecanej prędkości na _|_ azymut
         return (fx,fy,fa,fd,fc+1,fp+1)
+
     def get_map(self,name):
         pose = self.turtle_api.getPose(name)
         img = self.turtle_api.readCamera(name,
@@ -87,6 +99,7 @@ class TurtlesimEnv:
         fp=fy*np.cos(pose.theta)-fx*np.sin(pose.theta)  # rzut zalecanej prędkości na _|_ azymut
         return (fx,fy,fa,fd,fc+1,fp+1)
     # wykonuje zlecone działanie, zwraca sytuację, nagrodę, flagę końca przejazdu
+
     def step(self,action,realtime=False):
         self.step_cnt += 1
         # pozycja PRZED krokiem sterowania
@@ -94,7 +107,8 @@ class TurtlesimEnv:
         _,_,_,fd,_,_ = self.get_road(self.tname)         # odl. do celu
         # action: [prędkość,skręt]
         if realtime:
-            ????                                         # symulacja płynna, nie skokowa
+            #????                                         # symulacja płynna, nie skokowa
+	    we=1
         else:
             # obliczenie i wykonanie przesunięcia
             vx = np.cos(pose.theta+action[1])*action[0]*self.sec_per_step
@@ -137,6 +151,6 @@ class TurtlesimEnv:
 
 if __name__ == "__main__":
     env=TurtlesimEnv(CAM_RES,GRID_RES,SEC_PER_STEP)
-    env.load_routes('routes.csv')
+    env.load_routes('roads.csv')
     env.reset(10)
     env.step((.5,-.2),False)
