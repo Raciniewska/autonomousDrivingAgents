@@ -108,7 +108,38 @@ class TurtlesimEnv:
         # action: [prędkość,skręt]
         if realtime:
             #????                                         # symulacja płynna, nie skokowa
-	    we=1
+	    # obliczenie i wykonanie przesunięcia
+            vx = np.cos(pose.theta+action[1])*action[0]*self.sec_per_step
+            vy = np.sin(pose.theta+action[1])*action[0]*self.sec_per_step
+	    x_fin=pose.x+vx
+	    y_fin=pose.y+vy
+	    theta_fin=pose.theta+action[1]
+	    smallest_possible_move=0.05
+	    sign=lambda x: x and (1,-1)[x<0]
+	    a= (pose.y-y_fin)/(pose.x-x_fin)
+	    b=pose.y-(a*pose.x)
+
+	    number_of_steps_x=abs(int(vx/smallest_possible_move))
+	    number_of_steps_theta=abs(int(action[1]/smallest_possible_move))
+
+	    for theta_step in range(number_of_steps_theta):
+		p=Pose(x=self.pose.x,y=self.pose.y,theta=self.pose.theta+smallest_possible_move*sign(action[1]))
+		self.turtle_api.setPose(self.tname,p,mode='absolute')
+            	self.pose = p
+            	rospy.sleep(WAIT_AFTER_MOVE)
+
+	    for x_step in range(number_of_steps_x):
+		curr_x=self.pose.x+smallest_possible_move*sign(vx)
+		p=Pose(x=curr_x,y=(a*curr_x+b),theta=theta_fin)
+		self.turtle_api.setPose(self.tname,p,mode='absolute')
+            	self.pose = p
+            	rospy.sleep(WAIT_AFTER_MOVE)
+
+	    p=Pose(x=x_fin,y=y_fin,theta=theta_fin)
+	    self.turtle_api.setPose(self.tname,p,mode='absolute')
+            self.pose = p
+            rospy.sleep(WAIT_AFTER_MOVE)
+
         else:
             # obliczenie i wykonanie przesunięcia
             vx = np.cos(pose.theta+action[1])*action[0]*self.sec_per_step
@@ -153,4 +184,7 @@ if __name__ == "__main__":
     env=TurtlesimEnv(CAM_RES,GRID_RES,SEC_PER_STEP)
     env.load_routes('roads.csv')
     env.reset(10)
+    rospy.sleep(1)
     env.step((.5,-.2),False)
+    rospy.sleep(1)
+    env.step((2.5,-4.2),True)
