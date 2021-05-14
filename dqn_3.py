@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 import random
 import numpy as np
 from collections import deque
@@ -115,7 +115,7 @@ def train_main():
                 train(target_update_counter,done,learn_step)
             learn_step+=1
             if done:
-		print("Episode no. {}, total reward: {}".format(episode, episode_rwrd))
+                print("Episode no. {}, total reward: {}".format(episode, episode_rwrd))
                 break
             last_state=current_state        # przejscie do nowego stanu z zapamietaniem poprzedniego
             current_state=new_state
@@ -124,19 +124,19 @@ def train_main():
                 epsilon = max(MIN_EPSILON, epsilon)
     # zapis modelu do plikow
     model_json=model.to_json()
-    with open('nazwa_modelu.json','w') as f:
+    with open('model1.json','w') as f:
         f.write(model_json)
-    model.save_weights('nazwa_modelu.h5')
+    model.save_weights('model1.h5')
 
 def test():
 
     #model_json = ''
-    #with open('model.json','r') as f:
+    #with open('model1.json','r') as f:
     #    model_json=f.read()
     #    print(model_json)
     #
     #model = model_from_json(model_json)
-    #model.load_weights('model.h5')
+    #model.load_weights('model1.h5')
 
     max_moves = 30
     # tests (x,y, goal_x, goal_y, new_location) x,y - wspolrzedne poczatkowe, goal_x, goal_y - docelowe, new_location - informacja o tym, czy zolw ma byc zaladowany w nowym miejscu
