@@ -6,13 +6,14 @@ from keras.models import Sequential, model_from_json
 from keras.layers import GlobalAveragePooling2D, Conv3D, Permute, Dense, Flatten, Dropout
 from keras.optimizers import Adam, SGD
 import turtlesim_env as tse
+import csv
 
-REPLAY_MEMORY_SIZE = 5000 #???? (tysiace)
-MIN_REPLAY_MEMORY_SIZE = 2000 #????
-MINIBATCH_SIZE = 16 #???? (16)
+REPLAY_MEMORY_SIZE = 2000 #???? (tysiace)
+MIN_REPLAY_MEMORY_SIZE = 500 #????
+MINIBATCH_SIZE = 32 #???? (16)
 TRAINING_BATCH_SIZE = MINIBATCH_SIZE // 4
 UPDATE_TARGET_EVERY = 5
-EPISODES = 2000 #???? (tysiace)
+EPISODES = 500 #???? (tysiace)
 DISCOUNT = 0.99
 EPSILON_DECAY = 0.99
 MIN_EPSILON = 0.001
@@ -58,11 +59,28 @@ def create_model():             # wy: pozytek z CTL_DIM mozliwych decyzji
     model.compile(loss="mse", optimizer=Adam(lr=0.002), metrics=["accuracy"])
     return model
 
+# Start learning from the beginning
 model=create_model()
 target_model=create_model()
 target_model.set_weights(model.get_weights())
 replay_memory = deque(maxlen=REPLAY_MEMORY_SIZE)
 target_update_counter = [0]
+
+
+# Continue learning the model
+'''model_json = ''
+with open("modele/model1_375episodes.json",'r') as f:
+    model_json=f.read()
+    print(model_json)
+model = model_from_json(model_json)
+target_model = model_from_json(model_json)
+model.load_weights("modele/model1_375episodes.h5")
+model.compile(loss="mse", optimizer=Adam(lr=0.002), metrics=["accuracy"])
+target_model.compile(loss="mse", optimizer=Adam(lr=0.002), metrics=["accuracy"])
+target_model.set_weights(model.get_weights())
+replay_memory = deque(maxlen=REPLAY_MEMORY_SIZE)
+target_update_counter = [0]'''
+
 
 # Q-learning na podst.
 # https://pythonprogramming.net/training-deep-q-learning-dqn-reinforcement-learning-python-tutorial/?completed=/deep-q-learning-dqn-reinforcement-learning-python-tutorial/
@@ -98,7 +116,15 @@ def train(target_update_counter,terminal_state,learn_step):
 def train_main():
     epsilon=1
     for episode in range(EPISODES):
-	#print("Episode no. {}".format(episode), end=" ")
+        # okresowy zapis modelu do plikow
+        if episode>0 and episode % 25 == 0:
+            plik_json = "modele3/model3_" + str(episode) + "episodes.json"
+            plik_h5 = "modele3/model3_" + str(episode) + "episodes.h5"
+            model_json=model.to_json()
+            with open(plik_json,'w') as f:
+                f.write(model_json)
+            model.save_weights(plik_h5)
+
         current_state = env.reset(MAX_STEPS)
         last_state = [i.copy() for i in current_state]  # zaczyna od postoju, poprz. stan taki jak obecny
         episode_rwrd=0
@@ -125,48 +151,49 @@ def train_main():
                 epsilon = max(MIN_EPSILON, epsilon)
     # zapis modelu do plikow
     model_json=model.to_json()
-    with open('model1.json','w') as f:
+    with open('model3.json','w') as f:
         f.write(model_json)
-    model.save_weights('model1.h5')
+    model.save_weights('model3.h5')
 
+
+# testowanie modelu
 def test():
+    # wczytaj model z plikow
+    model_json = ''
+    with open("model2/model2.json",'r') as f:
+        model_json=f.read()
+        #print(model_json)
+    model = model_from_json(model_json)
+    model.load_weights("model2/model2.h5")
 
-    #model_json = ''
-    #with open('model1.json','r') as f:
-    #    model_json=f.read()
-    #    print(model_json)
-    #
-    #model = model_from_json(model_json)
-    #model.load_weights('model1.h5')
-
-    max_moves = 30
+    max_moves = 40  # dopuszczalna liczba ruchow dla 1 celu
     # tests (x,y, goal_x, goal_y, new_location) x,y - wspolrzedne poczatkowe, goal_x, goal_y - docelowe, new_location - informacja o tym, czy zolw ma byc zaladowany w nowym miejscu
     #tests = [['turtle1', 9.6, 21.62, 9.2, 15.6, True], ['turtle1', 9.2, 15.6, 10.2, 10.6, False]]
 
+    # wczytaj skrypt testowy
     fname = "testy/test-level-1.csv"
     tests = []
     with open(fname) as f:
         csv_reader=csv.reader(f, delimiter=',')
         for line in csv_reader:
-            tests.append(line)
+            tests.append(list(line))
 
     accomplished_goals=0
     fail=False
 
     for x in tests:
-        current_state = env.set_goal(x[1],x[2],x[3],x[4],x[5] or fail, x[0])
+        current_state = env.set_goal(float(x[1]),float(x[2]),float(x[3]),float(x[4]),bool(x[5]) or fail, x[0])
         for c in range(0, max_moves):
             last_state = [i.copy() for i in current_state]
             control = np.argmax(decision(model, last_state, current_state))
             new_state, reward, done, _ = env.step(ctl2act(control))     # wykonanie kroku symulacji
-
-            if(env.is_near_goal(x[0])):
+            if(env.is_near_goal('turtle1')):
                 print('Goal accomplished')
                 accomplished_goals+=1
                 fail=False
                 break
 
-            if(env.is_outside_path(x[0]) or x==max_moves-1):
+            if(env.is_outside_path('turtle1') or done):
                 print('Failed to accomplish goal')  
                 fail=True
                 break     
@@ -174,9 +201,6 @@ def test():
     print('Accuracy:', accomplished_goals/len(tests) * 100, '%') 
 
 if __name__ == "__main__":
-    train_main()
-    #test()
+    #train_main()
+    test()
 
-    #model_json=model.to_json()
-    #with open('model.json','w') as f:
-    #    f.write(model_json)

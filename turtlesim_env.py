@@ -34,9 +34,9 @@ class TurtlesimEnv:
             csv_reader=csv.reader(f, delimiter=';')
             for line in csv_reader:
                 self.routes[line[0]].append(line[1:])
-        print(self.routes)
+        #print(self.routes)
         tname=list(self.routes.keys())[0]   # utworzenie żółwia dla pierwszej trasy
-        print(tname)
+        #print(tname)
         self.tname=tname
         if self.turtle_api.hasTurtle(tname):
             self.turtle_api.killTurtle(tname)
@@ -186,16 +186,16 @@ class TurtlesimEnv:
 
     def is_near_goal(self, name):
         pose = self.turtle_api.getPose(name)
-        print(self.goal_loc.y, " ", self.goal_loc.x)
-        print( pose)
-        if (abs(pose.x - self.goal_loc.x) < 1 and abs(pose.y - self.goal_loc.y) <1):
+        #print(self.goal_loc.y, " ", self.goal_loc.x)
+        #print( pose)
+        if (abs(pose.x - self.goal_loc.x) < 4 and abs(pose.y - self.goal_loc.y) <4):
             return True
         else:
             return False
 
 
     def set_goal(self, x, y, goal_x, goal_y, new_location, name): 
-        self.max_steps = 20
+        self.max_steps = 40
         self.step_cnt = 0
 
         if not new_location:
