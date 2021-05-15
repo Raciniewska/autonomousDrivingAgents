@@ -18,7 +18,7 @@ EPSILON_DECAY = 0.99
 MIN_EPSILON = 0.001
 LEARNING_RATE = 0.1
 CTL_DIM = 6
-MAX_STEPS = 75 #???? (20?)          # liczba krokow w sekwencji uczenia
+MAX_STEPS = 40 #???? (20?)          # liczba krokow w sekwencji uczenia
 
 random.seed(1)
 np.random.seed(1)
@@ -112,6 +112,7 @@ def train_main():
             episode_rwrd+=reward
             replay_memory.append((last_state, current_state, control, reward, new_state, done))
             if len(replay_memory) >= MIN_REPLAY_MEMORY_SIZE:    # zgromadzono odpowiednio duzo probek
+                #print("Collected enough samples to start learning")
                 train(target_update_counter,done,learn_step)
             learn_step+=1
             if done:

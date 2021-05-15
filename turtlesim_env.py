@@ -70,6 +70,8 @@ class TurtlesimEnv:
         color = self.color_api.check()
         fx=.02*(color.r-200)                # składowa x zalecanej prędkości <-1;1>
         fy=.02*(color.b-200)                # składowa y zalecanej prędkości <-1;1>
+        if color.r==201 and color.b==199:   # poprawka na wypadniecie z trasy (trawa)
+            fx, fy = 0.0, 0.0
         fa=color.g/255.0                    # mnożnik kary za naruszenie ograniczeń prędkości
         pose=self.turtle_api.getPose(name)  # aktualna pozycja żółwia
         fd=np.sqrt((self.goal_loc.x-pose.x)**2+(self.goal_loc.y-pose.y)**2)     # odl. do celu
@@ -171,9 +173,11 @@ class TurtlesimEnv:
         reward += DIST_RWRD_RATE*(fd-fd1)               # nagroda za zbliżenie się do celu
         done = False                                    # flaga zakończenia sesji
         if abs(fx1)+abs(fy1)<.01 and fa1==1:            # wylądowaliśmy w rowie
+            #print("I'm in a ditch")
             reward += OUT_OF_TRACK_FINE
             done = True
         if self.step_cnt>self.max_steps:
+            #print("Executed max steps")
             done = True
         return self.get_map(self.tname), reward, done, None
     def signal_handler(self,sig, frame):
