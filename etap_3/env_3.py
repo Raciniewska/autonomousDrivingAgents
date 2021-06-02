@@ -52,14 +52,37 @@ class TurtlesimEnv:
         #self.tname = tname
         for route, sections in self.routes.items():
             for sec_id, sec in enumerate(sections):
-                for seq in range(sec[0]):
+                for seq in range(int(sec[0])):
                     tname = route+'_'+str(sec_id)+'_'+str(seq)
-                    ta=TurtleAgent(route, sec_id, seq, tname)
-                    self.agents[tname]=ta
                     if self.turtle_api.hasTurtle(tname):
                         self.turtle_api.killTurtle(tname)
                     self.turtle_api.spawnTurtle(tname, Pose())
                     self.turtle_api.setPen(tname, turtlesim.srv.SetPenRequest(r=255, g=255, b=255, width=5, off=1))
+                    ta=TurtleAgent(route, sec_id, seq, tname)
+                    self.agents[tname]=ta
+	#for tname in self.agents:
+	    #print(tname)
+
+    def reset_turtle(self, tname):
+	route_id=self.agents[tname].sec_id
+	route =self.routes[self.agents[tname].route][route_id]
+        self.agents[tname].goal_loc = Pose(x=float(route[5]), y=float(route[6]))
+        # próba ulokowania startu we wskazanym obszarze i jednocześnie na drodze (niezerowy wektor zalecanej prędkości)
+        while True:
+	    route_id=self.agents[tname].sec_id
+	    route =self.routes[self.agents[tname].route][route_id]
+            x = np.random.uniform(float(route[1]), float(route[2]))
+            y = np.random.uniform(float(route[3]), float(route[4]))
+            # azymut początkowy w kierunku celu
+            theta = np.arctan2(self.agents[tname].goal_loc.y - y, self.agents[tname].goal_loc.x - x)
+            # przestawienie żółwia w losowe miejsce obszaru narodzin
+            self.turtle_api.setPose(tname, Pose(x=x, y=y, theta=theta), mode='absolute')
+            rospy.sleep(WAIT_AFTER_MOVE)  # odczekać UWAGA inaczej symulator nie zdąży przestawić żółwia
+            # ????                            # przestawiać do skutku, aż znajdzie się na drodze
+	    color = self.agents[tname].color_api.check()
+            if color.g != 255 or color.r != 201 or color.b != 199:
+                return self.get_map(tname)
+        return self.get_map(tname)
 
     def reset(self, max_steps,  section=None ):  # przygotowanie do nowego przejazdu, zwraca sytuację początkową
         self.max_steps = max_steps
@@ -67,22 +90,28 @@ class TurtlesimEnv:
         # uczymy na trasie aktualnego agenta
         ret={}
         for tname in self.agents:
-            if section is None:
-                section = random.choice(self.routes[tname])  # wybór losowego segmentu trasy
-            self.agents[tname].goal_loc = Pose(x=float(section[5]), y=float(section[6]))
+	    route_id=self.agents[tname].sec_id
+	    route =self.routes[self.agents[tname].route][route_id]
+            #if section is None:
+                #section = random.choice(self.routes[tname])  # wybór losowego segmentu trasy
+            self.agents[tname].goal_loc = Pose(x=float(route[5]), y=float(route[6]))
             # próba ulokowania startu we wskazanym obszarze i jednocześnie na drodze (niezerowy wektor zalecanej prędkości)
             while True:
-                x = np.random.uniform(float(section[1]), float(section[2]))
-                y = np.random.uniform(float(section[3]), float(section[4]))
+		route_id=self.agents[tname].sec_id
+		route =self.routes[self.agents[tname].route][route_id]
+                x = np.random.uniform(float(route[1]), float(route[2]))
+                y = np.random.uniform(float(route[3]), float(route[4]))
                 # azymut początkowy w kierunku celu
                 theta = np.arctan2(self.agents[tname].goal_loc.y - y, self.agents[tname].goal_loc.x - x)
                 # przestawienie żółwia w losowe miejsce obszaru narodzin
                 self.turtle_api.setPose(tname, Pose(x=x, y=y, theta=theta), mode='absolute')
                 rospy.sleep(WAIT_AFTER_MOVE)  # odczekać UWAGA inaczej symulator nie zdąży przestawić żółwia
                 # ????                            # przestawiać do skutku, aż znajdzie się na drodze
-                if self.agents[tname].color_api.check().g != 255 or self.agents[tname].color_api.check().r != 201 or self.agents[tname].color_api.check().b != 199:
+		color = self.agents[tname].color_api.check()
+                if color.g != 255 or color.r != 201 or color.b != 199:
                     ret[tname]=self.get_map(tname)
                     break
+	#print(ret)
         return ret
 
     def get_road(self, name):
@@ -104,7 +133,7 @@ class TurtlesimEnv:
                                          frame_pixel_size=self.cam_res,
                                          cell_count=self.grid_res ** 2,
                                          x_offset=0,
-                                         goal=self.goal_loc,
+                                         goal=self.agents[name].goal_loc,
                                          show_matrix_cells_and_goal=False)
         fx = np.eye(self.grid_res)
         fy = fx.copy()
@@ -193,8 +222,9 @@ class TurtlesimEnv:
             SPEED_FINE_RATE = -10.0  # wzmocnienie kary za przekroczenie prędkości
             DIST_RWRD_RATE = 2.0  # wzmocnienie nagrody za zbliżanie się do celu
             OUT_OF_TRACK_FINE = -10  # ryczałtowa kara za wypadnięcie z trasy
+	    COLLISION_FINE = -10  # ryczałtowa kara za wypadnięcie z trasy
             reward = min(0, SPEED_FINE_RATE * (v1 - fv1))  # kara za przekroczenie prędkości
-            ##TODO KARA ZA KOLIZJE
+            
             if fv1 > .001:
                 vf1 = (vx1 * fx1 + vy1 * fy1) / fv1  # rzut prędkości faktycznej na zalecaną
                 if vf1 > 0:
@@ -204,6 +234,15 @@ class TurtlesimEnv:
             reward *= fa1  # relaksacja kar
             reward += DIST_RWRD_RATE * (self.agents[tname].fd - fd1)  # nagroda za zbliżenie się do celu
             done = False  # flaga zakończenia sesji
+	    ##KARA ZA KOLIZJE
+	    for another_tname in actions:
+		if another_tname == tname:
+		    continue;
+		else:
+		    if abs(self.agents[tname].pose.x - self.agents[another_tname].pose.x)<0.1 and abs(self.agents[tname].pose.y - self.agents[another_tname].pose.y)<0.1:
+		        reward +=COLLISION_FINE	
+			done=True
+
             if abs(fx1) + abs(fy1) < .01 and fa1 == 1:  # wylądowaliśmy w rowie
                 # print("I'm in a ditch")
                 reward += OUT_OF_TRACK_FINE
@@ -225,7 +264,7 @@ class TurtlesimEnv:
         pose = self.turtle_api.getPose(name)
         # print(self.goal_loc.y, " ", self.goal_loc.x)
         # print( pose)
-        if (abs(pose.x - self.goal_loc.x) < 4 and abs(pose.y - self.goal_loc.y) < 4):
+        if (abs(pose.x - self.agents[name].goal_loc.x) < 4 and abs(pose.y - self.agents[name].goal_loc.y) < 4):
             return True
         else:
             return False
@@ -238,10 +277,10 @@ class TurtlesimEnv:
             pose = self.turtle_api.getPose(name)
             x = pose.x
             y = pose.y
-        self.goal_loc = Pose(x=float(goal_x), y=float(goal_y))
-        theta = np.arctan2(self.goal_loc.y - y, self.goal_loc.x - x)
-        self.turtle_api.setPose(self.tname, Pose(x=x, y=y, theta=theta), mode='absolute')
-        return self.get_map(self.tname)
+        self.agents[name].goal_loc = Pose(x=float(goal_x), y=float(goal_y))
+        theta = np.arctan2(self.agents[name].goal_loc.y - y, self.agents[name].goal_loc.x - x)
+        self.turtle_api.setPose(name, Pose(x=x, y=y, theta=theta), mode='absolute')
+        return self.get_map(name)
 
     def is_outside_path(self, name):
         if self.agents[name].color_api.check().g != 255 or self.agents[name].color_api.check().r != 201 or self.agents[name].color_api.check().b != 199:
@@ -254,7 +293,7 @@ if __name__ == "__main__":
     env = TurtlesimEnv(CAM_RES, GRID_RES, SEC_PER_STEP)
     env.load_routes('roads.csv')
     env.reset(10)
-    rospy.sleep(1)
-    env.step((.5, -.2), False)
-    rospy.sleep(1)
-    env.step((2.5, -4.2), True)
+    #rospy.sleep(1)
+    #env.step((.5, -.2), False)
+    #rospy.sleep(1)
+    #env.step((2.5, -4.2), True)
