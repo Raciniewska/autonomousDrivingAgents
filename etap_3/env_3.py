@@ -234,6 +234,7 @@ class TurtlesimEnv:
             reward *= fa1  # relaksacja kar
             reward += DIST_RWRD_RATE * (self.agents[tname].fd - fd1)  # nagroda za zbliżenie się do celu
             done = False  # flaga zakończenia sesji
+            collision = False
 	    ##KARA ZA KOLIZJE
 	    for another_tname in actions:
 		if another_tname == tname:
@@ -241,7 +242,7 @@ class TurtlesimEnv:
 		else:
 		    if abs(self.agents[tname].pose.x - self.agents[another_tname].pose.x)<0.1 and abs(self.agents[tname].pose.y - self.agents[another_tname].pose.y)<0.1:
 		        reward +=COLLISION_FINE	
-			done=True
+			collision=True
 
             if abs(fx1) + abs(fy1) < .01 and fa1 == 1:  # wylądowaliśmy w rowie
                 # print("I'm in a ditch")
@@ -253,7 +254,7 @@ class TurtlesimEnv:
             ret[tname][0]=self.get_map(tname)
             ret[tname][1]=reward
             ret[tname][2]=done
-            ret[tname][3]=None
+            ret[tname][3]=collision
         return ret
 
     def signal_handler(self, sig, frame):
