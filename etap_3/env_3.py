@@ -64,13 +64,14 @@ class TurtlesimEnv:
 	    #print(tname)
 
     def reset_turtle(self, tname):
-	route_id=self.agents[tname].sec_id
-	route =self.routes[self.agents[tname].route][route_id]
+        self.agents[tname].step_cnt = 0
+        route_id=self.agents[tname].sec_id
+        route =self.routes[self.agents[tname].route][route_id]
         self.agents[tname].goal_loc = Pose(x=float(route[5]), y=float(route[6]))
         # próba ulokowania startu we wskazanym obszarze i jednocześnie na drodze (niezerowy wektor zalecanej prędkości)
         while True:
-	    route_id=self.agents[tname].sec_id
-	    route =self.routes[self.agents[tname].route][route_id]
+            route_id=self.agents[tname].sec_id
+            route =self.routes[self.agents[tname].route][route_id]
             x = np.random.uniform(float(route[1]), float(route[2]))
             y = np.random.uniform(float(route[3]), float(route[4]))
             # azymut początkowy w kierunku celu
@@ -79,26 +80,27 @@ class TurtlesimEnv:
             self.turtle_api.setPose(tname, Pose(x=x, y=y, theta=theta), mode='absolute')
             rospy.sleep(WAIT_AFTER_MOVE)  # odczekać UWAGA inaczej symulator nie zdąży przestawić żółwia
             # ????                            # przestawiać do skutku, aż znajdzie się na drodze
-	    color = self.agents[tname].color_api.check()
+            color = self.agents[tname].color_api.check()
             if color.g != 255 or color.r != 201 or color.b != 199:
                 return self.get_map(tname)
         return self.get_map(tname)
 
     def reset(self, max_steps,  section=None ):  # przygotowanie do nowego przejazdu, zwraca sytuację początkową
         self.max_steps = max_steps
-        self.step_cnt = 0
+        for tname in self.agents:
+            self.agents[tname].step_cnt = 0
         # uczymy na trasie aktualnego agenta
         ret={}
         for tname in self.agents:
-	    route_id=self.agents[tname].sec_id
-	    route =self.routes[self.agents[tname].route][route_id]
+            route_id=self.agents[tname].sec_id
+            route =self.routes[self.agents[tname].route][route_id]
             #if section is None:
                 #section = random.choice(self.routes[tname])  # wybór losowego segmentu trasy
             self.agents[tname].goal_loc = Pose(x=float(route[5]), y=float(route[6]))
             # próba ulokowania startu we wskazanym obszarze i jednocześnie na drodze (niezerowy wektor zalecanej prędkości)
             while True:
-		route_id=self.agents[tname].sec_id
-		route =self.routes[self.agents[tname].route][route_id]
+                route_id=self.agents[tname].sec_id
+                route =self.routes[self.agents[tname].route][route_id]
                 x = np.random.uniform(float(route[1]), float(route[2]))
                 y = np.random.uniform(float(route[3]), float(route[4]))
                 # azymut początkowy w kierunku celu
@@ -107,9 +109,9 @@ class TurtlesimEnv:
                 self.turtle_api.setPose(tname, Pose(x=x, y=y, theta=theta), mode='absolute')
                 rospy.sleep(WAIT_AFTER_MOVE)  # odczekać UWAGA inaczej symulator nie zdąży przestawić żółwia
                 # ????                            # przestawiać do skutku, aż znajdzie się na drodze
-		color = self.agents[tname].color_api.check()
+                color = self.agents[tname].color_api.check()
                 if color.g != 255 or color.r != 201 or color.b != 199:
-                    ret[tname]=self.get_map(tname)
+                    ret[tname] = self.get_map(tname)
                     break
 	#print(ret)
         return ret
@@ -122,7 +124,7 @@ class TurtlesimEnv:
             fx, fy = 0.0, 0.0
         fa = color.g / 255.0  # mnożnik kary za naruszenie ograniczeń prędkości
         pose = self.turtle_api.getPose(name)  # aktualna pozycja żółwia
-        fd = np.sqrt((self.goal_loc.x - pose.x) ** 2 + (self.goal_loc.y - pose.y) ** 2)  # odl. do celu
+        fd = np.sqrt((self.agents[name].goal_loc.x - pose.x) ** 2 + (self.agents[name].goal_loc.y - pose.y) ** 2)  # odl. do celu
         fc = fx * np.cos(pose.theta) + fy * np.sin(pose.theta)  # rzut zalecanej prędkości na azymut
         fp = fy * np.cos(pose.theta) - fx * np.sin(pose.theta)  # rzut zalecanej prędkości na _|_ azymut
         return (fx, fy, fa, fd, fc + 1, fp + 1)
@@ -152,11 +154,11 @@ class TurtlesimEnv:
     # wykonuje zlecone działanie, zwraca sytuację, nagrodę, flagę końca przejazdu
 
     def step(self, actions, realtime=False):
-        self.step_cnt += 1
         # pozycja PRZED krokiem sterowani
         for tname in actions:
             self.agents[tname].pose= self.turtle_api.getPose(tname)
             _, _, _,self.agents[tname].fd, _, _ = self.get_road(tname)  # odl. do celu
+            self.agents[tname].step_cnt += 1
 
         #pose = self.turtle_api.getPose(self.tname)
         #_, _, _, fd, _, _ = self.get_road(self.tname)  # odl. do celu
@@ -208,9 +210,12 @@ class TurtlesimEnv:
                 self.turtle_api.setPose(tname, p, mode='absolute')
                 self.agents[tname].pose= p
                 rospy.sleep(WAIT_AFTER_MOVE)
+        #print("Agent.keys: ", self.agents.keys())
+
         # pozycja PO kroku sterowania
         ret={}
         for tname in actions:
+            ret[tname] = []
             pose1 = self.turtle_api.getPose(tname)
             fx1, fy1, fa1, fd1, _, _ = self.get_road(tname)  # warunki drogowe po przemieszczeniu
             vx1 = (pose1.x - self.agents[tname].pose.x) / self.sec_per_step  # prędkość w aktualnym kierunku
@@ -222,7 +227,7 @@ class TurtlesimEnv:
             SPEED_FINE_RATE = -10.0  # wzmocnienie kary za przekroczenie prędkości
             DIST_RWRD_RATE = 2.0  # wzmocnienie nagrody za zbliżanie się do celu
             OUT_OF_TRACK_FINE = -10  # ryczałtowa kara za wypadnięcie z trasy
-	    COLLISION_FINE = -10  # ryczałtowa kara za wypadnięcie z trasy
+            COLLISION_FINE = -10  # ryczałtowa kara za wypadnięcie z trasy
             reward = min(0, SPEED_FINE_RATE * (v1 - fv1))  # kara za przekroczenie prędkości
             
             if fv1 > .001:
@@ -235,26 +240,27 @@ class TurtlesimEnv:
             reward += DIST_RWRD_RATE * (self.agents[tname].fd - fd1)  # nagroda za zbliżenie się do celu
             done = False  # flaga zakończenia sesji
             collision = False
-	    ##KARA ZA KOLIZJE
-	    for another_tname in actions:
-		if another_tname == tname:
-		    continue;
-		else:
-		    if abs(self.agents[tname].pose.x - self.agents[another_tname].pose.x)<0.1 and abs(self.agents[tname].pose.y - self.agents[another_tname].pose.y)<0.1:
-		        reward +=COLLISION_FINE	
-			collision=True
+            ##KARA ZA KOLIZJE
+            for another_tname in actions:
+                if another_tname == tname:
+                    continue;
+                else:
+                    if abs(self.agents[tname].pose.x - self.agents[another_tname].pose.x)<1 and abs(self.agents[tname].pose.y - self.agents[another_tname].pose.y)<1:
+                        reward +=COLLISION_FINE	
+                        collision=True
+                        print("Turtle {} collided with {}".format(tname, another_tname)) 
 
             if abs(fx1) + abs(fy1) < .01 and fa1 == 1:  # wylądowaliśmy w rowie
-                # print("I'm in a ditch")
+                print("Turtle {} is in a ditch".format(tname))
                 reward += OUT_OF_TRACK_FINE
                 done = True
-            if self.step_cnt > self.max_steps:
-                # print("Executed max steps")
+            if self.agents[tname].step_cnt > self.max_steps:
+                print("Turtle {} executed max steps".format(tname))
                 done = True
-            ret[tname][0]=self.get_map(tname)
-            ret[tname][1]=reward
-            ret[tname][2]=done
-            ret[tname][3]=collision
+            ret[tname].append(self.get_map(tname))
+            ret[tname].append(reward)
+            ret[tname].append(done)
+            ret[tname].append(collision)
         return ret
 
     def signal_handler(self, sig, frame):
@@ -272,7 +278,7 @@ class TurtlesimEnv:
 
     def set_goal(self, x, y, goal_x, goal_y, new_location, name):
         self.max_steps = 40
-        self.step_cnt = 0
+        self.agents[name].step_cnt = 0
 
         if not new_location:
             pose = self.turtle_api.getPose(name)
