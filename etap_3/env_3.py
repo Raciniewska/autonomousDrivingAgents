@@ -12,6 +12,7 @@ import sys
 import numpy as np
 import csv
 import random
+import sys
 
 GRID_RES = 5  # liczba komórek siatki
 CAM_RES = 6  # dł. boku siatki [px] ?????
@@ -133,6 +134,7 @@ class TurtlesimEnv:
         pose = self.turtle_api.getPose(name)
         img = self.turtle_api.readCamera(name,
                                          frame_pixel_size=self.cam_res,
+					 #cell_count=16,
                                          cell_count=self.grid_res ** 2,
                                          x_offset=0,
                                          goal=self.agents[name].goal_loc,
@@ -141,15 +143,22 @@ class TurtlesimEnv:
         fy = fx.copy()
         fa = fx.copy()
         fd = fx.copy()
+	collision = False
         for i, row in enumerate(img.m_rows):
             for j, cell in enumerate(row.cells):
                 fx[i, j] = cell.red
                 fy[i, j] = cell.blue
                 fa[i, j] = cell.green
                 fd[i, j] = cell.distance
+		#sys.stdout.write(str(cell.occupy)+" ")
+		if cell.occupy ==0:
+		    collision=True
+		    
+	    #print("\n")
+	#print("\n")
         fc = fx * np.cos(pose.theta) + fy * np.sin(pose.theta)  # rzut zalecanej prędkości na azymut
         fp = fy * np.cos(pose.theta) - fx * np.sin(pose.theta)  # rzut zalecanej prędkości na _|_ azymut
-        return (fx, fy, fa, fd, fc + 1, fp + 1)
+        return (fx, fy, fa, fd, fc + 1, fp + 1, collision)
 
     # wykonuje zlecone działanie, zwraca sytuację, nagrodę, flagę końca przejazdu
 
@@ -241,14 +250,19 @@ class TurtlesimEnv:
             done = False  # flaga zakończenia sesji
             collision = False
             ##KARA ZA KOLIZJE
-            for another_tname in actions:
-                if another_tname == tname:
-                    continue;
-                else:
-                    if abs(self.agents[tname].pose.x - self.agents[another_tname].pose.x)<1 and abs(self.agents[tname].pose.y - self.agents[another_tname].pose.y)<1:
-                        reward +=COLLISION_FINE	
-                        collision=True
-                        print("Turtle {} collided with {}".format(tname, another_tname)) 
+	    map=self.get_map(tname)
+	    ret[tname].append(map)
+	    if map[6] == True:
+		reward +=COLLISION_FINE	
+                collision=True
+            #for another_tname in actions:
+             #   if another_tname == tname:
+               #     continue;
+               # else:
+                #    if abs(self.agents[tname].pose.x - self.agents[another_tname].pose.x)<1 and abs(self.agents[tname].pose.y - self.agents[another_tname].pose.y)<1:
+                 #       reward +=COLLISION_FINE	
+                 #       collision=True
+                 #       print("Turtle {} collided with {}".format(tname, another_tname)) 
 
             if abs(fx1) + abs(fy1) < .01 and fa1 == 1:  # wylądowaliśmy w rowie
                 print("Turtle {} is in a ditch".format(tname))
@@ -257,7 +271,6 @@ class TurtlesimEnv:
             if self.agents[tname].step_cnt > self.max_steps:
                 print("Turtle {} executed max steps".format(tname))
                 done = True
-            ret[tname].append(self.get_map(tname))
             ret[tname].append(reward)
             ret[tname].append(done)
             ret[tname].append(collision)
@@ -303,4 +316,3 @@ if __name__ == "__main__":
     #rospy.sleep(1)
     #env.step((.5, -.2), False)
     #rospy.sleep(1)
-    #env.step((2.5, -4.2), True)
