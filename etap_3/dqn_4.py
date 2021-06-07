@@ -47,7 +47,7 @@ def ctl2act_multiagent(decisions):
     
 
 def inp_stack(last, cur):       # przygotowanie wejscia dla sieci
-    inp=np.stack([cur[2],cur[3],cur[4],cur[5],last[2],last[3],last[4],last[5]],axis=-1)
+    inp=np.stack([cur[2],cur[3],cur[4],cur[5],cur[6], last[2],last[3],last[4],last[5], last[6]],axis=-1)
     return inp
 
 def decision(model,last,cur):   # predykcja sterowania na podst. biezacej i ostatniej sytuacji
@@ -55,7 +55,7 @@ def decision(model,last,cur):   # predykcja sterowania na podst. biezacej i osta
     return model.predict(np.expand_dims(inp, axis=0)).flatten()
 
 def create_model():             # wy: pozytek z CTL_DIM mozliwych decyzji
-    input_shape = (tse.GRID_RES, tse.GRID_RES, 8, 1)  # warstwy (x,y,a,d) w chwili n oraz n-1
+    input_shape = (tse.GRID_RES, tse.GRID_RES, 10, 1)  # warstwy (x,y,a,d,collisions) w chwili n oraz n-1
     model = Sequential()
     # ???? struktura
     model.add(Conv3D(filters=16, kernel_size=(2, 2, 8), activation='relu', input_shape=input_shape))

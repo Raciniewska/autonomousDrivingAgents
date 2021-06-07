@@ -15,7 +15,7 @@ import random
 import sys
 
 GRID_RES = 5  # liczba komórek siatki
-CAM_RES = 6  # dł. boku siatki [px] ?????
+CAM_RES = 100  # dł. boku siatki [px] ?????
 SEC_PER_STEP = 1.0  # okres dyskretyzacji sterowania - nie mniej niż 1 [s]
 WAIT_AFTER_MOVE = 0.01  # oczekiwanie po setPose() [s]
 
@@ -143,22 +143,23 @@ class TurtlesimEnv:
         fy = fx.copy()
         fa = fx.copy()
         fd = fx.copy()
-	collision = False
+        fcollision = fx.copy()
         for i, row in enumerate(img.m_rows):
             for j, cell in enumerate(row.cells):
                 fx[i, j] = cell.red
                 fy[i, j] = cell.blue
                 fa[i, j] = cell.green
                 fd[i, j] = cell.distance
-		#sys.stdout.write(str(cell.occupy)+" ")
-		if cell.occupy ==0:
-		    collision=True
-		    
-	    #print("\n")
-	#print("\n")
+                #sys.stdout.write(str(cell.occupy)+" ")
+                #if cell.occupy ==0:
+                #    collision=True
+                fcollision[i, j] = cell.occupy
+                    
+            #print("\n")
+        #print("\n")
         fc = fx * np.cos(pose.theta) + fy * np.sin(pose.theta)  # rzut zalecanej prędkości na azymut
         fp = fy * np.cos(pose.theta) - fx * np.sin(pose.theta)  # rzut zalecanej prędkości na _|_ azymut
-        return (fx, fy, fa, fd, fc + 1, fp + 1, collision)
+        return (fx, fy, fa, fd, fc + 1, fp + 1, fcollision)
 
     # wykonuje zlecone działanie, zwraca sytuację, nagrodę, flagę końca przejazdu
 
@@ -250,11 +251,24 @@ class TurtlesimEnv:
             done = False  # flaga zakończenia sesji
             collision = False
             ##KARA ZA KOLIZJE
-	    map=self.get_map(tname)
-	    ret[tname].append(map)
-	    if map[6] == True:
-		reward +=COLLISION_FINE	
-                collision=True
+            map1=self.get_map(tname)
+            ret[tname].append(map1)
+            #print("Collision map for {}:\n{}".format(tname, map1[6]))
+
+            row_id = []
+            if self.grid_res % 2 == 1:  # nieparzysta liczba komorek
+                row_id.append( int(self.grid_res/2) )
+            else: # parz. liczba komorek
+                row_id.append( int(self.grid_res/2) )
+                row_id.append( int(self.grid_res/2)-1 )
+
+            for i in row_id:
+                if not map1[6][i,-1]:     # wykrycie kolizji w polu (lub polach) tuz przed zolwiem
+                    reward +=COLLISION_FINE      # 0 - jest zolw, 1 - nie ma zolwia
+                    collision=True
+                    print("Turtle {} collided".format(tname))
+                    break
+
             #for another_tname in actions:
              #   if another_tname == tname:
                #     continue;
