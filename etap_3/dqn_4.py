@@ -8,12 +8,12 @@ from keras.optimizers import Adam, SGD
 import env_3 as tse
 import csv
 
-REPLAY_MEMORY_SIZE = 2000 #???? (tysiace)
-MIN_REPLAY_MEMORY_SIZE = 500 #????
+REPLAY_MEMORY_SIZE = 3000 #???? (tysiace)
+MIN_REPLAY_MEMORY_SIZE = 800 #????
 MINIBATCH_SIZE = 32 #???? (16)
 TRAINING_BATCH_SIZE = MINIBATCH_SIZE // 4
 UPDATE_TARGET_EVERY = 5
-EPISODES = 500 #???? (tysiace)
+EPISODES = 5000 #???? (tysiace)
 DISCOUNT = 0.99
 EPSILON_DECAY = 0.99
 MIN_EPSILON = 0.001
@@ -25,7 +25,7 @@ random.seed(1)
 np.random.seed(1)
 
 env=tse.TurtlesimEnv(tse.CAM_RES,tse.GRID_RES,tse.SEC_PER_STEP)
-env.load_routes('roads.csv')
+env.load_routes('test-roads-8ag.csv')
 
 def ctl2act(decision):          #  predkosc\skret    -.1rad 0 .1rad
     v = .2                      #      0.2              0   1   2
@@ -133,6 +133,7 @@ def train_main():
     tnames = set(current_states.keys())  # zbior agentow
     last_states = {tname:agent for tname, agent in agents.items()}   # zaczyna od postoju, poprz. stan taki jak obecny
     #print("Current states:\n", current_states)
+    rewards = []
     while episode_cnt < EPISODES:
         episode_rwrd=0
         learn_step=1
@@ -164,15 +165,20 @@ def train_main():
                 print("Episode no. {}, total reward: {}".format(episode_cnt, episode_rwrd))
                 current_states[tname] = env.reset_turtle(tname)
                 last_states[tname] = [i.copy() for i in current_states[tname]] 
+                rewards.append([episode_rwrd])
 
                 # okresowy zapis modelu do plikow
-                if episode_cnt>0 and episode_cnt % 25 == 0:
+                if episode_cnt>0 and episode_cnt % 50 == 0:
                     plik_json = "modele_wieloag/model1_" + str(episode_cnt) + "episodes.json"
                     plik_h5 = "modele_wieloag/model1_" + str(episode_cnt) + "episodes.h5"
                     model_json=model.to_json()
                     with open(plik_json,'w') as f:
                         f.write(model_json)
                     model.save_weights(plik_h5)
+                    with open("nagrody.csv",'a',newline='') as ff:
+                        writer = csv.writer(ff)
+                        writer.writerows(rewards)
+                    rewards.clear()
 
         if epsilon > MIN_EPSILON:       # rosnace p-stwo uczenia na podst. historii
             epsilon *= EPSILON_DECAY
@@ -184,51 +190,77 @@ def train_main():
     model.save_weights('model3.h5')
 
 
-# testowanie modelu (TODO: trzeba przerobic na wersje wieloagentowa)
+# testowanie modelu
 def test():
     # wczytaj model z plikow
     model_json = ''
-    with open("model2/model2.json",'r') as f:
+    with open("modele_wieloag/model1_600episodes.json",'r') as f:
         model_json=f.read()
         #print(model_json)
     model = model_from_json(model_json)
-    model.load_weights("model2/model2.h5")
+    model.load_weights("modele_wieloag/model1_600episodes.h5")
 
-    max_moves = 40  # dopuszczalna liczba ruchow dla 1 celu
-    # tests (x,y, goal_x, goal_y, new_location) x,y - wspolrzedne poczatkowe, goal_x, goal_y - docelowe, new_location - informacja o tym, czy zolw ma byc zaladowany w nowym miejscu
-    #tests = [['turtle1', 9.6, 21.62, 9.2, 15.6, True], ['turtle1', 9.2, 15.6, 10.2, 10.6, False]]
+    # Uwagi do skrytpu testowego:
+    # tests = [[tname,cnt,0,x,0,y,goal_x,goal_y]], 
+    # 'cnt' powinno byc zawsze 1, bo kazdy zolw ma inny punkt startowy
+    # dwa zera sa tylko po to, by plik byl kompatybilny z funkcja reset, ktora dzialala dla scen. uczacego
 
     # wczytaj skrypt testowy
-    fname = "testy/test-level-1.csv"
+    fname = "test-roads-8ag.csv"
     tests = []
     with open(fname) as f:
-        csv_reader=csv.reader(f, delimiter=',')
+        csv_reader=csv.reader(f, delimiter=';')
         for line in csv_reader:
             tests.append(list(line))
 
     accomplished_goals=0
-    fail=False
+    finished_turtles = 0
 
-    for x in tests:
-        current_state = env.set_goal(float(x[1]),float(x[2]),float(x[3]),float(x[4]),bool(x[5]) or fail, x[0])
-        for c in range(0, max_moves):
-            last_state = [i.copy() for i in current_state]
-            control = np.argmax(decision(model, last_state, current_state))
-            new_state, reward, done, _ = env.step(ctl2act(control))     # wykonanie kroku symulacji
-            if(env.is_near_goal('turtle1')):
-                print('Goal accomplished')
-                accomplished_goals+=1
-                fail=False
-                break
+    # tylko dla celow inicjalizacji struktur danych
+    agents = env.reset(80)
+    current_states = {tname:agent for tname, agent in agents.items()}
+    tnames = set(current_states.keys())  # zbior agentow
+    last_states = {tname:agent for tname, agent in agents.items()} 
 
-            if(env.is_outside_path('turtle1') or done):
-                print('Failed to accomplish goal')  
-                fail=True
-                break     
+    id = 0
+    for tname in tnames:
+        current_states[tname] = env.set_goal(float(tests[id][3]),float(tests[id][5]),float(tests[id][6]),float(tests[id][7]),True, tname)
+        last_states[tname] = env.set_goal(float(tests[id][3]),float(tests[id][5]),float(tests[id][6]),float(tests[id][7]),True, tname)
+        id += 1
+
+    while finished_turtles < len(tests):
+        turtles_to_remove = []
+        controls = {}
+        for tname in tnames:
+            controls[tname] = np.argmax(decision(model, last_states[tname], current_states[tname]))  # sterowanie modelem
+        scene = env.step(ctl2act_multiagent(controls))  # wykonanie kroku symulacji
+        terminal_state = {}
+        for tname in tnames:
+            terminal_state[tname] = False
+            if scene[tname][2] or scene[tname][3]: # max_steps, ditch or collision
+                terminal_state[tname] = True
+        for tname in tnames:
+            if not terminal_state[tname]:
+                if(env.is_near_goal(tname)):
+                    print("{} accomplished goal".format(tname))
+                    accomplished_goals+=1
+                    finished_turtles += 1
+                    turtles_to_remove.append(tname)
+                    break
+                last_states[tname]=current_states[tname]  # przejscie do nowego stanu z zapamietaniem poprzedniego
+                current_states[tname]=scene[tname][0]  # new_state
+            else:
+                print("{} failed to accomplish goal".format(tname))  
+                turtles_to_remove.append(tname)
+                finished_turtles += 1 
+        for t in turtles_to_remove:
+            tnames.remove(t)
          
     print('Accuracy:', accomplished_goals/len(tests) * 100, '%') 
 
+
+
 if __name__ == "__main__":
-    train_main()
-    #test()
+    #train_main()
+    test()
 
